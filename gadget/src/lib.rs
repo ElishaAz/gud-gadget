@@ -379,6 +379,8 @@ pub fn event(event: custom::Event) -> anyhow::Result<Option<Event>> {
                     })));
                 }
                 GUD_REQ_GET_PROPERTIES => {
+                    // TODO: send properties. Properties are sent as an array of pairs of u16 id, u64 value
+
                     let sent = req
                         .send(&[0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
                         .context("send properties")?;
@@ -396,6 +398,8 @@ pub fn event(event: custom::Event) -> anyhow::Result<Option<Event>> {
                     debug!("sent connectors");
                 }
                 GUD_REQ_GET_CONNECTOR_PROPERTIES => {
+                    // TODO: send connector properties. Properties are sent as an array of pairs of u16 id, u64 value
+
                     req.send(&[0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
                         .context("send connector properties")?;
                     debug!("sent connector properties");
@@ -406,8 +410,10 @@ pub fn event(event: custom::Event) -> anyhow::Result<Option<Event>> {
                     })));
                 }
                 GUD_REQ_GET_CONNECTOR_EDID => {
-                    req.send(&[0]).context("send EDIDs")?;
-                    debug!("sent EDIDs");
+                    // TODO: this should send an EDID struct: https://github.com/torvalds/linux/blob/v6.18/include/drm/drm_edid.h#L291-L334
+
+                    // req.send(&[0]).context("send EDIDs")?;
+                    // debug!("sent EDIDs");
                 }
                 GUD_REQ_GET_CONNECTOR_STATUS => {
                     req.send(&[ConnectorStatus::CONNECTED.bits()])
