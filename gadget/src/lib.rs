@@ -76,11 +76,13 @@ pub struct DisplayMode {
 
 impl DisplayMode {
     pub fn from_res(width: u32, height: u32, max_fps: f32) -> Self {
+        // What maps to what was extracted from the `drm_mode_detailed` function in `drivers/gpu/drm/drm_edid.c` of the linux kernel.
+
         let hdisplay = width as u16;
         let vdisplay = height as u16;
 
         // TODO: find better values for these
-        let hsync_offset = 1u16;
+        let hsync_offset = 0u16;
         let hsync_pulse_width = 1u16;
         let hblank = hsync_offset + hsync_pulse_width;
 
@@ -88,10 +90,14 @@ impl DisplayMode {
         let hsync_end = hsync_start + hsync_pulse_width;
         let htotal = hdisplay + hblank;
 
-        assert!(hsync_offset + hsync_pulse_width <= hblank);
+        assert!(hsync_pulse_width > 0, "Pulse width can't be 0");
+        assert!(
+            hsync_offset + hsync_pulse_width <= hblank,
+            "htotal must be no less than hsync_end"
+        );
 
         // TODO: find better values for these
-        let vsync_offset = 1u16;
+        let vsync_offset = 0u16;
         let vsync_pulse_width = 1u16;
         let vblank = vsync_offset + vsync_pulse_width;
 
@@ -99,7 +105,11 @@ impl DisplayMode {
         let vsync_end = vsync_start + vsync_pulse_width;
         let vtotal = vdisplay + vblank;
 
-        assert!(vsync_offset + vsync_pulse_width <= vblank);
+        assert!(vsync_pulse_width > 0, "Pulse width can't be 0");
+        assert!(
+            vsync_offset + vsync_pulse_width <= vblank,
+            "vtotal must be no less than vsync_end"
+        );
 
         let clock: u32 = (max_fps * htotal as f32 * vtotal as f32 / 1000f32) as u32;
 
