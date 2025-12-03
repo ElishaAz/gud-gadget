@@ -157,7 +157,7 @@ impl<'a> GetDisplayModes<'a> {
     }
 }
 
-impl <'a> GetPixelFormats<'a> {
+impl<'a> GetPixelFormats<'a> {
     pub fn send_pixel_formats(self, formats: &[u8]) -> anyhow::Result<()> {
         self.sender.send(formats).context("send pixel formats")?;
         debug!("sent pixel formats: {:?}", formats);
@@ -190,9 +190,7 @@ pub fn event(event: custom::Event) -> anyhow::Result<Option<Event>> {
                     debug!("sent status");
                 }
                 GUD_REQ_GET_DESCRIPTOR => {
-                    return Ok(Some(Event::GetDescriptor(GetDescriptor {
-                        sender: req,
-                    })));
+                    return Ok(Some(Event::GetDescriptor(GetDescriptor { sender: req })));
                 }
                 GUD_REQ_GET_FORMATS => {
                     return Ok(Some(Event::GetPixelFormats(GetPixelFormats {
@@ -222,9 +220,9 @@ pub fn event(event: custom::Event) -> anyhow::Result<Option<Event>> {
                     debug!("sent connector properties");
                 }
                 GUD_REQ_GET_CONNECTOR_MODES => {
-                    return Ok(Some(Event::GetDisplayModes(
-                        GetDisplayModes { sender: req },
-                    )));
+                    return Ok(Some(Event::GetDisplayModes(GetDisplayModes {
+                        sender: req,
+                    })));
                 }
                 GUD_REQ_GET_CONNECTOR_EDID => {
                     req.send(&[0]).context("send EDIDs")?;

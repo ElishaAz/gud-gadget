@@ -1,3 +1,3 @@
 [workspace]
-members = ["gadget", "drm"]
+members = ["gadget", "drm", "dummy"]
 resolver = "2"
