@@ -207,6 +207,7 @@ name = "gud-gadget"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bitflags",
  "bytes",
  "lz4",
  "serde",

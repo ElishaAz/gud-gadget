@@ -1,6 +1,6 @@
 use drm::buffer::Buffer;
 use drm::control::Device;
-use gud_gadget::{DisplayMode, Event};
+use gud_gadget::{DisplayMode, DisplayModeFlags, Event};
 use std::env::args;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -168,9 +168,9 @@ fn main() -> anyhow::Result<()> {
                     req.send_descriptor(min_width, min_height, max_width, max_height)
                         .expect("failed to send descriptor");
                 }
-                Event::GetPixelFormats(req) => {
-                    req.send_pixel_formats(&[gud_gadget::GUD_PIXEL_FORMAT_RGB565]).unwrap()
-                }
+                Event::GetPixelFormats(req) => req
+                    .send_pixel_formats(&[gud_gadget::PixelFormat::RGB565])
+                    .unwrap(),
                 Event::GetDisplayModes(req) => {
                     let modes = card
                         .get_modes(connector.handle())
@@ -190,7 +190,7 @@ fn main() -> anyhow::Result<()> {
                                 vdisplay,
                                 vsync_end,
                                 vsync_start,
-                                flags: 0,
+                                flags: DisplayModeFlags::empty(),
                             }
                         })
                         .collect::<Vec<DisplayMode>>();

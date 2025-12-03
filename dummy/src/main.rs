@@ -89,7 +89,7 @@ fn main() -> anyhow::Result<()> {
                 }
                 Event::GetPixelFormats(req) => {
                     println!("Sending pixel format (RGB565)");
-                    req.send_pixel_formats(&[gud_gadget::GUD_PIXEL_FORMAT_RGB565])
+                    req.send_pixel_formats(&[gud_gadget::PixelFormat::RGB565])
                         .unwrap()
                 }
                 Event::GetDisplayModes(req) => {

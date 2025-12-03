@@ -1,4 +1,5 @@
 use anyhow::Context;
+use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 use tracing::{debug, trace, warn};
@@ -27,27 +28,101 @@ const GUD_REQ_SET_STATE_COMMIT: u8 = 0x62;
 const GUD_REQ_SET_CONTROLLER_ENABLE: u8 = 0x63;
 const GUD_REQ_SET_DISPLAY_ENABLE: u8 = 0x64;
 
-const GUD_DISPLAY_FLAG_FULL_UPDATE: u32 = 0x02;
-
-const GUD_CONNECTOR_STATUS_CONNECTED: u8 = 0x01;
-
-pub const GUD_PIXEL_FORMAT_RGB565: u8 = 0x40;
-pub const GUD_PIXEL_FORMAT_RGB888: u8 = 0x50;
-pub const GUD_PIXEL_FORMAT_XRGB8888: u8 = 0x80;
-
-const GUD_CONNECTOR_TYPE_PANEL: u8 = 0;
-
-const GUD_STATUS_OK: u8 = 0;
-
-const GUD_COMPRESSION_LZ4: u8 = 0x01;
-
 // https://github.com/openmoko/openmoko-usb-oui/commit/73bdf541b6f9840b70219626b4088d4e3f164904
 pub const OPENMOKO_GUD_ID: Id = Id::new(0x1d50, 0x614d);
 
-#[derive(Serialize)]
+#[repr(u8)]
+#[derive(Debug, Serialize, Deserialize)]
+enum Status {
+    Ok = 0x00,
+    Busy = 0x01,
+    RequestNotSupported = 0x02,
+    ProtocolError = 0x03,
+    InvalidParameter = 0x04,
+    Error = 0x05,
+}
+
+#[repr(transparent)]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConnectorStatus(u8);
+
+bitflags! {
+    impl ConnectorStatus: u8{
+        const DISCONNECTED = 0x00;
+        const CONNECTED = 0x01;
+        const UNKNOWN = 0x02;
+
+        const CHANGED = 1 << 7;
+
+        // The source may set any bits
+        const _ = !0;
+    }
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum PixelFormat {
+    /// 1-bit monochrome
+    R1 = 0x01,
+    /// 8-bit greyscale
+    R8 = 0x08,
+    XRGB1111 = 0x20,
+    RGB332 = 0x30,
+    RGB565 = 0x40,
+    RGB888 = 0x50,
+    XRGB8888 = 0x80,
+    ARGB8888 = 0x81,
+}
+
+#[repr(transparent)]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Compression(u8);
+
+bitflags! {
+    impl Compression: u8{
+        /// LZ4 lossless compression
+        const LZ4 = 1 << 0;
+
+        // The source may set any bits
+        const _ = !0;
+    }
+}
+
+#[repr(u8)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum ConnectorType {
+    Panel = 0,
+    VGA = 1,
+    Composite = 2,
+    SVideo = 3,
+    Component = 4,
+    DVI = 5,
+    DisplayPort = 6,
+    HDMI = 7,
+}
+
+#[repr(transparent)]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ConnectorDescriptorFlags(u32);
+
+bitflags! {
+    impl ConnectorDescriptorFlags: u32 {
+        /// Connector status can change (polled every 10 seconds)
+        const POLL_STATUS = 1 << 0;
+        /// Interlaced modes are supported
+        const INTERLACE = 1 << 1;
+        /// Doublescan modes are supported
+        const DOUBLESCAN = 1 << 2;
+
+        // The source may set any bits
+        const _ = !0;
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 struct ConnectorDescriptor {
-    connector_type: u8,
-    flags: u32,
+    connector_type: ConnectorType,
+    flags: ConnectorDescriptorFlags,
 }
 
 pub struct PixelDataEndpoint {
@@ -60,7 +135,34 @@ pub struct PixelDataEndpoint {
     compress_buf: BytesMut,
 }
 
-#[derive(Debug, Serialize)]
+#[repr(transparent)]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DisplayModeFlags(u32);
+
+bitflags! {
+    impl DisplayModeFlags: u32{
+        // These flags are from DRM
+        const PHSYNC = 1 << 0;
+        const NHSYNC = 1 << 1;
+        const PVSYNC = 1 << 2;
+        const NVSYNC = 1 << 3;
+        const INTERLACE = 1 << 4;
+        const DBLSCAN = 1 << 5;
+        const CSYNC = 1 << 6;
+        const PCSYNC = 1 << 7;
+        const NCSYNC = 1 << 8;
+        const HSKEW = 1 << 9;
+        const DBLCLK = 1 << 12;
+
+        // These flags are only for GUD
+        const PREFERRED = 1 << 10;
+
+        // The source may set any bits
+        const _ = !0;
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct DisplayMode {
     pub clock: u32,
     pub hdisplay: u16,
@@ -71,7 +173,7 @@ pub struct DisplayMode {
     pub vsync_start: u16,
     pub vsync_end: u16,
     pub vtotal: u16,
-    pub flags: u32,
+    pub flags: DisplayModeFlags,
 }
 
 impl DisplayMode {
@@ -123,19 +225,19 @@ impl DisplayMode {
             vsync_start,
             vsync_end,
             vtotal,
-            flags: 0,
+            flags: DisplayModeFlags::empty(),
         }
     }
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct SetBuffer {
     pub x: u32,
     pub y: u32,
     pub width: u32,
     pub height: u32,
     pub length: u32,
-    pub compression: u8,
+    pub compression: Compression,
     pub compressed_length: u32,
 }
 
@@ -173,8 +275,8 @@ impl<'a> GetDescriptor<'a> {
         let descriptor = DisplayDescriptor {
             magic: GUD_DISPLAY_MAGIC,
             version: 1,
-            flags: 0,
-            compression: GUD_COMPRESSION_LZ4,
+            flags: DisplayDescriptorFlags::empty(),
+            compression: Compression::LZ4,
             max_height,
             max_width,
             min_height,
@@ -212,10 +314,35 @@ impl<'a> GetDisplayModes<'a> {
 }
 
 impl<'a> GetPixelFormats<'a> {
-    pub fn send_pixel_formats(self, formats: &[u8]) -> anyhow::Result<()> {
-        self.sender.send(formats).context("send pixel formats")?;
+    pub fn send_pixel_formats(self, formats: &[PixelFormat]) -> anyhow::Result<()> {
+        let formats_u8: Vec<u8> = formats.iter().map(|f| f.clone() as u8).collect();
+        self.sender
+            .send(&formats_u8)
+            .context("send pixel formats")?;
         debug!("sent pixel formats: {:?}", formats);
         Ok(())
+    }
+}
+
+#[repr(transparent)]
+#[derive(Debug, Serialize, Deserialize)]
+pub struct DisplayDescriptorFlags(u32);
+
+bitflags! {
+    impl DisplayDescriptorFlags: u32{
+        /// Always do a status request after a SET request.
+        /// This is used by the Linux gadget driver since it has no way to control
+        /// the status stage of a control OUT request that has a payload.
+        const STATUS_ON_SET = 1 << 0;
+        /// Always send the entire framebuffer when flushing changes.
+        /// The GUD_REQ_SET_BUFFER request will not be sent before each bulk transfer,
+        /// it will only be sent if the previous bulk transfer had failed.
+        /// This gives the device a chance to reset its state machine if needed.
+        /// This flag can not be used in combination with compression.
+        const FULL_UPDATE = 1 << 1;
+
+        // The source may set any bits
+        const _ = !0;
     }
 }
 
@@ -223,8 +350,8 @@ impl<'a> GetPixelFormats<'a> {
 struct DisplayDescriptor {
     magic: u32,
     version: u8,
-    flags: u32,
-    compression: u8,
+    flags: DisplayDescriptorFlags,
+    compression: Compression,
     max_buffer_size: u32,
     min_width: u32,
     max_width: u32,
@@ -240,7 +367,7 @@ pub fn event(event: custom::Event) -> anyhow::Result<Option<Event>> {
             let ctrl_req = req.ctrl_req();
             match ctrl_req.request {
                 GUD_REQ_GET_STATUS => {
-                    req.send(&[GUD_STATUS_OK]).context("send status")?;
+                    req.send(&[Status::Ok as u8]).context("send status")?;
                     debug!("sent status");
                 }
                 GUD_REQ_GET_DESCRIPTOR => {
@@ -259,8 +386,8 @@ pub fn event(event: custom::Event) -> anyhow::Result<Option<Event>> {
                 }
                 GUD_REQ_GET_CONNECTORS => {
                     let connectors = [ConnectorDescriptor {
-                        connector_type: GUD_CONNECTOR_TYPE_PANEL,
-                        flags: 0,
+                        connector_type: ConnectorType::Panel,
+                        flags: ConnectorDescriptorFlags::empty(),
                     }];
 
                     let mut buf: [u8; 5] = [0; 5];
@@ -283,7 +410,7 @@ pub fn event(event: custom::Event) -> anyhow::Result<Option<Event>> {
                     debug!("sent EDIDs");
                 }
                 GUD_REQ_GET_CONNECTOR_STATUS => {
-                    req.send(&[GUD_CONNECTOR_STATUS_CONNECTED])
+                    req.send(&[ConnectorStatus::CONNECTED.bits()])
                         .context("send connector status")?;
                     debug!("sent connector status");
                 }
@@ -360,7 +487,7 @@ impl PixelDataEndpoint {
         let start = Instant::now();
         let max_packet_size = self.ep_rx.max_packet_size().unwrap();
 
-        let len = if info.compression > 0 {
+        let len = if !info.compression.is_empty() {
             info.compressed_length
         } else {
             info.length
@@ -395,7 +522,7 @@ impl PixelDataEndpoint {
             panic!("expected buf len {}, got {}", len, self.buf.len());
         }
 
-        let buf = if info.compression > 0 {
+        let buf = if !info.compression.is_empty() {
             let decompress_start = Instant::now();
             if self.compress_buf.len() < info.length as usize {
                 self.compress_buf
