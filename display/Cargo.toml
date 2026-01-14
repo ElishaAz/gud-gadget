@@ -1,0 +1,14 @@
+[package]
+name = "gud-display"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ctrlc = "3.5.1"
+gud-gadget = { path = "../gadget" }
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+usb-gadget = "0.7.6"
+tracing = "0.1.41"
+anyhow = "1.0.100"
+minifb = "0.28.0"
+bytemuck = "1.24.0"
