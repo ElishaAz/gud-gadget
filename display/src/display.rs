@@ -57,41 +57,44 @@ impl Display {
                 }
                 PixelFormat::XRGB1111 => {
                     let byte = input[i / 2];
-                    let val = ((byte >> ((i % 2) * 4)) & 0xF) << 4;
-                    r = val;
-                    g = val;
-                    b = val;
+                    let val = (byte >> ((i % 2) * 4)) & 0x0F;
+                    r = (val & 0b0100) << 5;
+                    g = (val & 0b0010) << 6;
+                    b = (val & 0b0001) << 7;
                 }
                 PixelFormat::RGB332 => {
                     let byte = input[i];
-                    r = (byte >> 6) << 6;
-                    g = ((byte >> 3) & 0b111) << 3;
-                    b = (byte & 0b11) << 6;
+                    r = byte & 0b11100000;
+                    g = (byte << 3) & 0b11100000;
+                    b = (byte << 6) & 0b11000000;
                 }
                 PixelFormat::RGB565 => {
                     let lo = input[2 * i] as u16;
                     let hi = input[2 * i + 1] as u16;
                     let raw = (hi << 8) | lo;
 
-                    r = ((raw >> 8) & 0b1111000) as u8;
+                    r = ((raw >> 8) & 0b11111000) as u8;
                     g = ((raw >> 3) & 0b11111100) as u8;
                     b = ((raw << 3) & 0b11111000) as u8;
                 }
                 PixelFormat::RGB888 => {
-                    r = input[3 * i];
+                    // lsb
+                    b = input[3 * i];
                     g = input[3 * i + 1];
-                    b = input[3 * i + 2];
+                    r = input[3 * i + 2];
                 }
                 PixelFormat::XRGB8888 => {
-                    r = input[4 * i + 1];
+                    // lsb
+                    b = input[4 * i + 1];
                     g = input[4 * i + 2];
-                    b = input[4 * i + 3];
+                    r = input[4 * i + 3];
                 }
                 PixelFormat::ARGB8888 => {
+                    // lsb
                     a = input[4 * i];
-                    r = input[4 * i + 1];
+                    b = input[4 * i + 1];
                     g = input[4 * i + 2];
-                    b = input[4 * i + 3];
+                    r = input[4 * i + 3];
                 }
             }
 
