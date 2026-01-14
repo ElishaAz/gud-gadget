@@ -32,7 +32,7 @@ const GUD_REQ_SET_DISPLAY_ENABLE: u8 = 0x64;
 pub const OPENMOKO_GUD_ID: Id = Id::new(0x1d50, 0x614d);
 
 #[repr(u8)]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 enum Status {
     Ok = 0x00,
     Busy = 0x01,
@@ -43,7 +43,7 @@ enum Status {
 }
 
 #[repr(transparent)]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ConnectorStatus(u8);
 
 bitflags! {
@@ -60,7 +60,7 @@ bitflags! {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum PixelFormat {
     /// 1-bit monochrome
     R1 = 0x01,
@@ -75,7 +75,7 @@ pub enum PixelFormat {
 }
 
 #[repr(transparent)]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Compression(u8);
 
 bitflags! {
@@ -89,7 +89,7 @@ bitflags! {
 }
 
 #[repr(u8)]
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ConnectorType {
     Panel = 0,
     VGA = 1,
@@ -102,7 +102,7 @@ pub enum ConnectorType {
 }
 
 #[repr(transparent)]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct ConnectorDescriptorFlags(u32);
 
 bitflags! {
@@ -119,7 +119,7 @@ bitflags! {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 struct ConnectorDescriptor {
     connector_type: ConnectorType,
     flags: ConnectorDescriptorFlags,
@@ -134,7 +134,7 @@ pub struct PixelDataEndpoint {
 }
 
 #[repr(transparent)]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct DisplayModeFlags(u32);
 
 bitflags! {
@@ -160,7 +160,7 @@ bitflags! {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct DisplayMode {
     pub clock: u32,
     pub hdisplay: u16,
@@ -233,7 +233,7 @@ impl DisplayMode {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct SetBuffer {
     pub x: u32,
     pub y: u32,
@@ -328,7 +328,7 @@ impl<'a> GetPixelFormats<'a> {
 }
 
 #[repr(transparent)]
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct DisplayDescriptorFlags(u32);
 
 bitflags! {
@@ -349,7 +349,7 @@ bitflags! {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 struct DisplayDescriptor {
     magic: u32,
     version: u8,
