@@ -93,7 +93,7 @@ fn main() -> anyhow::Result<()> {
                         .unwrap()
                 }
                 Event::GetDisplayModes(req) => {
-                    let mode = DisplayMode::from_res(width, height, framerate);
+                    let mode = DisplayMode::from_res(width, height, framerate, true);
                     let modes = [mode];
 
                     println!("Sending display modes: {:?}", modes);
@@ -104,7 +104,7 @@ fn main() -> anyhow::Result<()> {
                     frames += 1;
                     // println!("Got a frame: {:?}", info);
                     gud_data
-                        .recv_buffer(info, &mut buffer, 2, 2)
+                        .recv_buffer_with_pitch(info, &mut buffer, 2, 2)
                         .expect("recv_buffer failed");
                 }
             }

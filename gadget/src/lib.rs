@@ -129,8 +129,6 @@ pub struct PixelDataEndpoint {
     ep_rx: EndpointReceiver,
     // A collection of the small buffers we've allocated for submission to AIO to read from the endpoint.
     ep_buf: Vec<BytesMut>,
-    // The full contents of a transmitted buffer are copied here.
-    buf: BytesMut,
     // If compression is enabled, the received buffer is decompressed here.
     compress_buf: BytesMut,
 }
@@ -177,8 +175,9 @@ pub struct DisplayMode {
 }
 
 impl DisplayMode {
-    pub fn from_res(width: u32, height: u32, max_fps: f32) -> Self {
+    pub fn from_res(width: u32, height: u32, max_fps: f32, preferred: bool) -> Self {
         // What maps to what was extracted from the `drm_mode_detailed` function in `drivers/gpu/drm/drm_edid.c` of the linux kernel.
+        // Can also be seen in https://github.com/notro/gud-pico/blob/main/libraries/gud_pico/gud.c#L126
 
         let hdisplay = width as u16;
         let vdisplay = height as u16;
@@ -225,7 +224,11 @@ impl DisplayMode {
             vsync_start,
             vsync_end,
             vtotal,
-            flags: DisplayModeFlags::empty(),
+            flags: if preferred {
+                DisplayModeFlags::PREFERRED
+            } else {
+                DisplayModeFlags::empty()
+            },
         }
     }
 }
@@ -476,21 +479,13 @@ impl PixelDataEndpoint {
             Self {
                 ep_rx,
                 ep_buf: Vec::new(),
-                buf: BytesMut::new(),
                 compress_buf: BytesMut::new(),
             },
             Endpoint::bulk(ep_dir),
         )
     }
 
-    pub fn recv_buffer(
-        &mut self,
-        info: SetBuffer,
-        fb: &mut [u8],
-        fb_pitch: usize,
-        bpp: usize,
-    ) -> anyhow::Result<()> {
-        let start = Instant::now();
+    fn recv_to_buffer(&mut self, info: &SetBuffer, dest: &mut [u8]) -> anyhow::Result<()> {
         let max_packet_size = self.ep_rx.max_packet_size().unwrap();
 
         let len = if !info.compression.is_empty() {
@@ -498,16 +493,30 @@ impl PixelDataEndpoint {
         } else {
             info.length
         } as usize;
-        self.buf.clear();
 
-        // Ensure the buffer is large enough to fit all incoming data.
-        if self.buf.capacity() < len {
-            self.buf.reserve(len - self.buf.capacity());
+        assert!(
+            dest.len() >= len,
+            "Bad buffer size. Expected: {}. Actual: {}",
+            len,
+            dest.len()
+        );
+
+        let have_compression = !info.compression.is_empty();
+
+        if have_compression {
+            // Ensure the buffer is large enough to fit all incoming data.
+            if self.compress_buf.capacity() < info.compressed_length as usize {
+                self.compress_buf
+                    .reserve(info.compressed_length as usize - self.compress_buf.capacity());
+            }
+            self.compress_buf.clear();
         }
+
+        let mut index = 0usize;
 
         // Read the incoming data fully into the buffer.
         let read_start = Instant::now();
-        while self.buf.len() < len {
+        while index < len {
             let buf = self
                 .ep_buf
                 .pop()
@@ -517,37 +526,56 @@ impl PixelDataEndpoint {
                 continue;
             }
             let mut buf = buf.unwrap();
-            self.buf.extend_from_slice(&buf);
+
+            if have_compression {
+                self.compress_buf.extend_from_slice(&buf);
+            } else {
+                let dest_len = dest.len();
+                dest[index..(index + dest_len)].copy_from_slice(&buf);
+            }
+
+            index += buf.len();
             buf.clear();
             self.ep_buf.push(buf);
         }
         trace!("read buffer took {}ms", read_start.elapsed().as_millis());
 
-        if self.buf.len() != len {
-            // TODO: proper Err
-            panic!("expected buf len {}, got {}", len, self.buf.len());
+        if index != len {
+            panic!("expected buf len {}, got {}", len, index);
         }
 
-        let buf = if !info.compression.is_empty() {
+        if have_compression {
             let decompress_start = Instant::now();
-            if self.compress_buf.len() < info.length as usize {
-                self.compress_buf
-                    .resize(info.length as usize - self.compress_buf.capacity(), 0);
-            }
-            lz4::block::decompress_to_buffer(
-                &self.buf,
-                Some(info.length as i32),
-                &mut self.compress_buf,
-            )
-            .context("lz4 decompress")?;
+            lz4::block::decompress_to_buffer(&self.compress_buf, Some(info.length as i32), dest)
+                .context("lz4 decompress")?;
             trace!(
                 "decompress buffer took {}ms",
                 decompress_start.elapsed().as_millis()
             );
-            &self.compress_buf
-        } else {
-            &self.buf
-        };
+        }
+
+        Ok(())
+    }
+
+    pub fn recv_buffer_with_pitch(
+        &mut self,
+        info: SetBuffer,
+        fb: &mut [u8],
+        fb_pitch: usize,
+        bpp: usize,
+    ) -> anyhow::Result<()> {
+        println!("recv_buffer {:?}", info);
+
+        let start = Instant::now();
+
+        // // Ensure the buffer is large enough to fit all incoming data.
+        // if self.buf.capacity() < info.length as usize {
+        //     self.buf.reserve(info.length as usize - self.buf.capacity());
+        // }
+
+        let mut buf = vec![0; info.length as usize];
+
+        self.recv_to_buffer(&info, &mut buf)?;
 
         let mut y = info.y as usize;
         let end_y = (info.y + info.height) as usize;
@@ -567,5 +595,9 @@ impl PixelDataEndpoint {
         trace!("recv_buffer took {}ms", start.elapsed().as_millis());
 
         Ok(())
+    }
+
+    pub fn recv_buffer(&mut self, info: SetBuffer, dest: &mut [u8]) -> anyhow::Result<()> {
+        return self.recv_to_buffer(&info, dest);
     }
 }

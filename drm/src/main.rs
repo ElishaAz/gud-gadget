@@ -198,7 +198,7 @@ fn main() -> anyhow::Result<()> {
                 }
                 Event::Buffer(info) => {
                     gud_data
-                        .recv_buffer(info, mapping.as_mut(), pitch as usize, 2)
+                        .recv_buffer_with_pitch(info, mapping.as_mut(), pitch as usize, 2)
                         .expect("recv_buffer failed");
                 }
             }
