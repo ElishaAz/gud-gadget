@@ -94,16 +94,16 @@ impl std::fmt::Display for PixelFormat {
 }
 
 impl PixelFormat {
-    pub fn bps(&self) -> f32 {
+    pub fn bpp(&self) -> usize {
         match self {
-            PixelFormat::R1 => 1.0 / 8.0,
-            PixelFormat::R8 => 1.0,
-            PixelFormat::XRGB1111 => 1.0 / 2.0,
-            PixelFormat::RGB332 => 1.0,
-            PixelFormat::RGB565 => 2.0,
-            PixelFormat::RGB888 => 3.0,
-            PixelFormat::XRGB8888 => 4.0,
-            PixelFormat::ARGB8888 => 4.0,
+            PixelFormat::R1 => 1,
+            PixelFormat::R8 => 8,
+            PixelFormat::XRGB1111 => 4,
+            PixelFormat::RGB332 => 8,
+            PixelFormat::RGB565 => 16,
+            PixelFormat::RGB888 => 24,
+            PixelFormat::XRGB8888 => 32,
+            PixelFormat::ARGB8888 => 32,
         }
     }
 }

@@ -80,16 +80,17 @@ fn main() -> anyhow::Result<()> {
     })
     .expect("cleanup handler registration failed");
 
-    let mut display = Display::new(width as usize, height as usize, framerate, pix_format);
+    let mut display = Display::new(width as usize, height as usize, framerate, pix_format, true);
 
     // This buffer receives the frames
-    let mut buffer = vec![0u8; (width as f32 * height as f32 * pix_format.bps()).ceil() as usize];
+    let mut buffer =
+        vec![0u8; (width as f32 * height as f32 * pix_format.bpp() as f32 / 8.0).ceil() as usize];
     println!(
-        "Buffer size: {} (width: {}, height: {}, bps: {})",
+        "Buffer size: {} (width: {}, height: {}, bpp: {})",
         buffer.len(),
         width,
         height,
-        pix_format.bps()
+        pix_format.bpp()
     );
 
     let mut last_window_update = Instant::now();
