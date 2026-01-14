@@ -1,3 +1,3 @@
 [workspace]
-members = ["gadget", "drm", "dummy", "display"]
+members = ["gadget", "drm", "dummy", "display-minifb"]
 resolver = "2"

@@ -1,5 +1,5 @@
 [package]
-name = "gud-display"
+name = "gud-display-minifb"
 version = "0.1.0"
 edition = "2021"
 
