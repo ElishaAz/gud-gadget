@@ -104,7 +104,7 @@ fn main() -> anyhow::Result<()> {
                     frames += 1;
                     // println!("Got a frame: {:?}", info);
                     gud_data
-                        .recv_buffer_with_pitch(info, &mut buffer, 2, 2)
+                        .recv_buffer(info, &mut buffer)
                         .expect("recv_buffer failed");
                 }
             }
