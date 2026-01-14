@@ -1,5 +1,5 @@
-use gud_gadget::{DisplayMode, Event};
-use minifb::{Window, WindowOptions};
+use display::Display;
+use gud_gadget::{DisplayMode, Event, PixelFormat};
 use std::env::args;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -8,52 +8,7 @@ use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use usb_gadget::function::custom::{Custom, Interface};
 use usb_gadget::{default_udc, Class, Config, Gadget, Strings};
 
-fn rgb565_to_rgba8888(input: &[u8]) -> Vec<u32> {
-    assert!(input.len() % 2 == 0, "RGB565 buffer length must be even");
-
-    let num_pixels = input.len() / 2;
-    let mut output = Vec::with_capacity(num_pixels);
-
-    for i in 0..num_pixels {
-        let lo = input[2 * i] as u16;
-        let hi = input[2 * i + 1] as u16;
-        let raw = (hi << 8) | lo;
-
-        // Extract 5/6/5 bits
-        let r5 = ((raw >> 11) & 0x1F) as u8;
-        let g6 = ((raw >> 5) & 0x3F) as u8;
-        let b5 = (raw & 0x1F) as u8;
-
-        // Expand to 8 bits per channel:
-        // replicate high bits into low bits for smoother mapping
-        let r8 = (r5 << 3) | (r5 >> 2);
-        let g8 = (g6 << 2) | (g6 >> 4);
-        let b8 = (b5 << 3) | (b5 >> 2);
-
-        // Pack as 0xAARRGGBB (opaque alpha = 0xFF)
-        let pixel = (0xFFu32 << 24) | ((r8 as u32) << 16) | ((g8 as u32) << 8) | (b8 as u32);
-        output.push(pixel);
-    }
-
-    output
-}
-
-fn display_buf(window: &mut Window, buffer: &[u8], width: u32, height: u32) -> () {
-    let rgba_buffer = rgb565_to_rgba8888(buffer);
-    // let rgba_buffer = vec![0xFFFFFFFFu32; buffer.len() / 2];
-
-    // for i in (0..buffer.len()).step_by(100) {
-    //     let sum = buffer[i..i + 100].iter().sum::<u8>();
-    //     if sum == 0 {
-    //         continue;
-    //     }
-    //     println!("{}: Sum {}", i, sum);
-    // }
-
-    window
-        .update_with_buffer(&rgba_buffer, width as usize, height as usize)
-        .unwrap();
-}
+mod display;
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::registry()
@@ -79,6 +34,21 @@ fn main() -> anyhow::Result<()> {
         (_, _) => {
             panic!("Not a valid resolution: {}", res);
         }
+    };
+
+    let pix_format = match args().skip(2).next() {
+        Some(format) => match format.as_str() {
+            "R1" => PixelFormat::R1,
+            "R8" => PixelFormat::R8,
+            "XRGB1111" => PixelFormat::XRGB1111,
+            "RGB332" => PixelFormat::RGB332,
+            "RGB565" => PixelFormat::RGB565,
+            "RGB888" => PixelFormat::RGB888,
+            "XRGB8888" => PixelFormat::XRGB8888,
+            "ARGB8888" => PixelFormat::ARGB8888,
+            _ => panic!("Unknown pixel format: {}", format),
+        },
+        _ => gud_gadget::PixelFormat::RGB565,
     };
 
     let udc = default_udc().expect("no UDC found");
@@ -110,20 +80,17 @@ fn main() -> anyhow::Result<()> {
     })
     .expect("cleanup handler registration failed");
 
-    let mut window = Window::new(
-        "GUD Display",
-        width as usize,
-        height as usize,
-        WindowOptions::default(),
-    )
-    .unwrap_or_else(|e| {
-        panic!("{}", e);
-    });
-
-    window.set_target_fps(framerate.round() as usize);
+    let mut display = Display::new(width as usize, height as usize, framerate, pix_format);
 
     // This buffer receives the frames
-    let mut buffer = vec![0u8; (width * height * 2) as usize];
+    let mut buffer = vec![0u8; (width as f32 * height as f32 * pix_format.bps()).ceil() as usize];
+    println!(
+        "Buffer size: {} (width: {}, height: {}, bps: {})",
+        buffer.len(),
+        width,
+        height,
+        pix_format.bps()
+    );
 
     let mut last_window_update = Instant::now();
 
@@ -131,9 +98,9 @@ fn main() -> anyhow::Result<()> {
     let mut last_print = Instant::now();
 
     while running.load(Ordering::Relaxed) {
-        if !window.is_open() {
+        if display.check_close() {
             // Window closed
-            break;
+            running.store(false, Ordering::SeqCst);
         }
 
         if Instant::now()
@@ -142,7 +109,7 @@ fn main() -> anyhow::Result<()> {
             > 1000
         {
             // Update the display at least once a second (gud does not refresh if there are no changes)
-            display_buf(&mut window, &buffer, width, height);
+            display.display_buf(&buffer);
             last_window_update = Instant::now();
         }
 
@@ -165,9 +132,8 @@ fn main() -> anyhow::Result<()> {
                         .expect("failed to send descriptor");
                 }
                 Event::GetPixelFormats(req) => {
-                    println!("Sending pixel format (RGB565)");
-                    req.send_pixel_formats(&[gud_gadget::PixelFormat::RGB565])
-                        .unwrap()
+                    println!("Sending pixel format ({})", pix_format);
+                    req.send_pixel_formats(&[pix_format]).unwrap()
                 }
                 Event::GetDisplayModes(req) => {
                     let mode = DisplayMode::from_res(width, height, framerate, true);
@@ -183,7 +149,7 @@ fn main() -> anyhow::Result<()> {
                     gud_data
                         .recv_buffer(info, &mut buffer)
                         .expect("recv_buffer failed");
-                    display_buf(&mut window, &buffer, width, height);
+                    display.display_buf(&buffer);
                     last_window_update = Instant::now();
                 }
             }

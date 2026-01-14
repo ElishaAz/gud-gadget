@@ -74,6 +74,40 @@ pub enum PixelFormat {
     ARGB8888 = 0x81,
 }
 
+impl std::fmt::Display for PixelFormat {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                PixelFormat::R1 => "R1",
+                PixelFormat::R8 => "R8",
+                PixelFormat::XRGB1111 => "XRGB1111",
+                PixelFormat::RGB332 => "RGB332",
+                PixelFormat::RGB565 => "RGB565",
+                PixelFormat::RGB888 => "RGB888",
+                PixelFormat::XRGB8888 => "XRGB8888",
+                PixelFormat::ARGB8888 => "ARGB8888",
+            }
+        )
+    }
+}
+
+impl PixelFormat {
+    pub fn bps(&self) -> f32 {
+        match self {
+            PixelFormat::R1 => 1.0 / 8.0,
+            PixelFormat::R8 => 1.0,
+            PixelFormat::XRGB1111 => 1.0 / 2.0,
+            PixelFormat::RGB332 => 1.0,
+            PixelFormat::RGB565 => 2.0,
+            PixelFormat::RGB888 => 3.0,
+            PixelFormat::XRGB8888 => 4.0,
+            PixelFormat::ARGB8888 => 4.0,
+        }
+    }
+}
+
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 pub struct Compression(u8);
