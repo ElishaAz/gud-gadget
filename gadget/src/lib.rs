@@ -598,8 +598,6 @@ impl PixelDataEndpoint {
         fb_pitch: usize,
         bpp: usize,
     ) -> anyhow::Result<()> {
-        println!("recv_buffer {:?}", info);
-
         let start = Instant::now();
 
         // // Ensure the buffer is large enough to fit all incoming data.
