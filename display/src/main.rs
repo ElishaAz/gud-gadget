@@ -1,14 +1,77 @@
+use clap::Parser;
 use display::Display;
 use gud_gadget::{DisplayMode, Event, PixelFormat};
-use std::env::args;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use std::{
+    str::FromStr,
+    sync::atomic::{AtomicBool, Ordering},
+};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter};
 use usb_gadget::function::custom::{Custom, Interface};
 use usb_gadget::{default_udc, Class, Config, Gadget, Strings};
 
+mod backends;
+mod colors;
 mod display;
+
+#[derive(Debug, Clone, Copy)]
+struct VideoMode {
+    width: u32,
+    height: u32,
+    framerate: f32,
+}
+
+impl FromStr for VideoMode {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // Expect WIDTHxHEIGHT@FRAMERATE
+        let parts: Vec<&str> = s.split('@').collect();
+        if parts.len() != 2 {
+            return Err(format!("invalid format, expected WIDTHxHEIGHT@FRAMERATE"));
+        }
+        let framerate: f32 = parts[1]
+            .parse()
+            .map_err(|_| "invalid framerate".to_string())?;
+        let dims: Vec<&str> = parts[0].split('x').collect();
+
+        if dims.len() != 2 {
+            return Err(format!("invalid WIDTHxHEIGHT format"));
+        }
+
+        let width: u32 = dims[0].parse().map_err(|_| "invalid WIDTH".to_string())?;
+        let height: u32 = dims[1].parse().map_err(|_| "invalid height".to_string())?;
+
+        Ok(Self {
+            width,
+            height,
+            framerate,
+        })
+    }
+}
+
+#[derive(Parser, Debug)]
+#[command(author, version, about)]
+struct Args {
+    mode: VideoMode,
+    #[arg(short, long, default_value_t=PixelFormat::RGB565)]
+    format: PixelFormat,
+    #[arg(
+        short,
+        long,
+        default_value = "default",
+        help = "The rendering backend",
+        hide_default_value = true
+    )]
+    backend: backends::BackendNames,
+    #[arg(
+        short,
+        long,
+        help = "Disable lookup table for pixel format conversions"
+    )]
+    no_lut: bool,
+}
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::registry()
@@ -16,40 +79,7 @@ fn main() -> anyhow::Result<()> {
         .with(EnvFilter::from_default_env())
         .init();
 
-    let res = args()
-        .skip(1)
-        .next()
-        .expect("specify resolution in the format WIDTHxHEIGHT@FRAMERATE");
-
-    let x_idx = res.find("x");
-    let at_idx = res.find("@");
-
-    let (width, height, framerate) = match (x_idx, at_idx) {
-        (Some(x), Some(at)) => {
-            let width = res[0..x].parse::<u32>().expect("invalid width");
-            let height = res[x + 1..at].parse::<u32>().expect("invalid height");
-            let framerate = res[at + 1..].parse::<f32>().expect("invalid framerate");
-            (width, height, framerate)
-        }
-        (_, _) => {
-            panic!("Not a valid resolution: {}", res);
-        }
-    };
-
-    let pix_format = match args().skip(2).next() {
-        Some(format) => match format.as_str() {
-            "R1" => PixelFormat::R1,
-            "R8" => PixelFormat::R8,
-            "XRGB1111" => PixelFormat::XRGB1111,
-            "RGB332" => PixelFormat::RGB332,
-            "RGB565" => PixelFormat::RGB565,
-            "RGB888" => PixelFormat::RGB888,
-            "XRGB8888" => PixelFormat::XRGB8888,
-            "ARGB8888" => PixelFormat::ARGB8888,
-            _ => panic!("Unknown pixel format: {}", format),
-        },
-        _ => gud_gadget::PixelFormat::RGB565,
-    };
+    let args = Args::parse();
 
     let udc = default_udc().expect("no UDC found");
 
@@ -80,17 +110,34 @@ fn main() -> anyhow::Result<()> {
     })
     .expect("cleanup handler registration failed");
 
-    let mut display = Display::new(width as usize, height as usize, framerate, pix_format, true);
+    let backend = backends::create_backend(
+        args.backend,
+        args.mode.width as usize,
+        args.mode.height as usize,
+        args.mode.framerate,
+    );
+
+    let mut display = Display::new(
+        args.mode.width as usize,
+        args.mode.height as usize,
+        args.mode.framerate,
+        args.format,
+        backend,
+        !args.no_lut,
+    );
 
     // This buffer receives the frames
-    let mut buffer =
-        vec![0u8; (width as f32 * height as f32 * pix_format.bpp() as f32 / 8.0).ceil() as usize];
+    let mut buffer = vec![
+        0u8;
+        (args.mode.width as f32 * args.mode.height as f32 * args.format.bpp() as f32 / 8.0).ceil()
+            as usize
+    ];
     println!(
         "Buffer size: {} (width: {}, height: {}, bpp: {})",
         buffer.len(),
-        width,
-        height,
-        pix_format.bpp()
+        args.mode.width,
+        args.mode.height,
+        args.format.bpp()
     );
 
     let mut last_window_update = Instant::now();
@@ -127,17 +174,27 @@ fn main() -> anyhow::Result<()> {
                 Event::GetDescriptor(req) => {
                     println!(
                         "Sending display descriptor. Width: {}, Height: {}",
-                        width, height
+                        args.mode.width, args.mode.height
                     );
-                    req.send_descriptor(width, height, width, height)
-                        .expect("failed to send descriptor");
+                    req.send_descriptor(
+                        args.mode.width,
+                        args.mode.height,
+                        args.mode.width,
+                        args.mode.height,
+                    )
+                    .expect("failed to send descriptor");
                 }
                 Event::GetPixelFormats(req) => {
-                    println!("Sending pixel format ({})", pix_format);
-                    req.send_pixel_formats(&[pix_format]).unwrap()
+                    println!("Sending pixel format ({})", args.format);
+                    req.send_pixel_formats(&[args.format]).unwrap()
                 }
                 Event::GetDisplayModes(req) => {
-                    let mode = DisplayMode::from_res(width, height, framerate, true);
+                    let mode = DisplayMode::from_res(
+                        args.mode.width,
+                        args.mode.height,
+                        args.mode.framerate,
+                        true,
+                    );
                     let modes = [mode];
 
                     println!("Sending display modes: {:?}", modes);

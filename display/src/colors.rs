@@ -1,54 +1,15 @@
 use gud_gadget::PixelFormat;
-use minifb::{Window, WindowOptions};
-use std::time::Instant;
 
-pub struct Display {
-    width: usize,
-    height: usize,
+pub struct Colors {
     pix_format: PixelFormat,
     lut: Vec<u32>,
-    use_lut: bool,
-    buffer: Vec<u32>,
-    window: Window,
 }
 
-impl Display {
-    pub fn new(
-        width: usize,
-        height: usize,
-        framerate: f32,
-        pix_format: PixelFormat,
-        use_lut: bool,
-    ) -> Self {
-        let mut window = Window::new(
-            "GUD Display",
-            width as usize,
-            height as usize,
-            WindowOptions::default(),
-        )
-        .unwrap_or_else(|e| {
-            panic!("{}", e);
-        });
+impl Colors {
+    pub fn new(pix_format: PixelFormat) -> Self {
+        let lut = Self::create_lut(pix_format);
 
-        window.set_target_fps(framerate.round() as usize);
-
-        let lut = if use_lut {
-            Self::create_lut(pix_format)
-        } else {
-            vec![]
-        };
-
-        let buffer = Vec::with_capacity(width * height * 8 / pix_format.bpp());
-
-        Self {
-            width,
-            height,
-            pix_format,
-            lut,
-            use_lut,
-            buffer,
-            window,
-        }
+        Self { pix_format, lut }
     }
 
     fn create_lut(pix_format: gud_gadget::PixelFormat) -> Vec<u32> {
@@ -108,7 +69,57 @@ impl Display {
         }
     }
 
-    fn convert_buffer(pix_format: PixelFormat, input: &[u8], dest: &mut Vec<u32>) {
+    pub fn convert_with_lut(&self, input: &[u8], dest: &mut Vec<u32>) {
+        dest.clear();
+
+        match self.pix_format.bpp() {
+            1 => {
+                // Can't use a lookup table
+                for i in input {
+                    for j in 0..8 {
+                        dest.push(0x00FFFFFF * ((i >> j) & 0x01) as u32);
+                    }
+                }
+            }
+            4 => {
+                for i in input {
+                    dest.push(self.lut[(i & 0xFF) as usize]);
+                    dest.push(self.lut[((i >> 4) & 0xFF) as usize]);
+                }
+            }
+            8 => {
+                for i in input {
+                    dest.push(self.lut[*i as usize]);
+                }
+            }
+            16 => {
+                let input: &[u16] = bytemuck::cast_slice(input);
+                for i in input {
+                    dest.push(self.lut[*i as usize]);
+                }
+            }
+            // 24 => {}
+            // 32 => {}
+            _ => panic!("Unsupported pixel format!"),
+        };
+    }
+
+    pub fn convert<'a>(&self, input: &'a [u8], dest: &'a mut Vec<u32>, use_lut: bool) -> &'a [u32] {
+        match self.pix_format {
+            PixelFormat::XRGB8888 | PixelFormat::ARGB8888 => bytemuck::cast_slice(input),
+            _ => {
+                if use_lut {
+                    self.convert_with_lut(input, dest);
+                } else {
+                    Self::convert_buffer(self.pix_format, input, dest);
+                }
+
+                dest
+            }
+        }
+    }
+
+    pub fn convert_buffer(pix_format: PixelFormat, input: &[u8], dest: &mut Vec<u32>) {
         let num_pixels = input.len() * 8 / pix_format.bpp();
 
         dest.clear();
@@ -180,73 +191,5 @@ impl Display {
             let pixel = ((a as u32) << 24) | ((r as u32) << 16) | ((g as u32) << 8) | (b as u32);
             dest.push(pixel);
         }
-    }
-
-    pub fn convert_with_lut(
-        pix_format: PixelFormat,
-        input: &[u8],
-        lut: &[u32],
-        dest: &mut Vec<u32>,
-    ) {
-        dest.clear();
-
-        match pix_format.bpp() {
-            1 => {
-                // Can't use a lookup table
-                for i in input {
-                    for j in 0..8 {
-                        dest.push(0x00FFFFFF * ((i >> j) & 0x01) as u32);
-                    }
-                }
-            }
-            4 => {
-                for i in input {
-                    dest.push(lut[(i & 0xFF) as usize]);
-                    dest.push(lut[((i >> 4) & 0xFF) as usize]);
-                }
-            }
-            8 => {
-                for i in input {
-                    dest.push(lut[*i as usize]);
-                }
-            }
-            16 => {
-                let input: &[u16] = bytemuck::cast_slice(input);
-                for i in input {
-                    dest.push(lut[*i as usize]);
-                }
-            }
-            // 24 => {}
-            // 32 => {}
-            _ => panic!("Unsupported pixel format!"),
-        };
-    }
-
-    pub fn display_buf(&mut self, input: &[u8]) {
-        let rgba_buffer: &[u32] = match self.pix_format {
-            PixelFormat::XRGB8888 | PixelFormat::ARGB8888 => bytemuck::cast_slice(input),
-            _ => &{
-                let start = Instant::now();
-                if self.use_lut {
-                    Self::convert_with_lut(self.pix_format, input, &self.lut, &mut self.buffer);
-                } else {
-                    Self::convert_buffer(self.pix_format, input, &mut self.buffer);
-                }
-                println!(
-                    "Conversion took: {}ms",
-                    Instant::now().duration_since(start).as_millis()
-                );
-
-                &self.buffer
-            },
-        };
-
-        self.window
-            .update_with_buffer(&rgba_buffer, self.width, self.height)
-            .unwrap();
-    }
-
-    pub fn check_close(&mut self) -> bool {
-        return !self.window.is_open();
     }
 }

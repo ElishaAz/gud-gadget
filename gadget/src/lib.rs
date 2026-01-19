@@ -1,4 +1,4 @@
-use anyhow::Context;
+use anyhow::{Context, Ok};
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
@@ -90,6 +90,24 @@ impl std::fmt::Display for PixelFormat {
                 PixelFormat::ARGB8888 => "ARGB8888",
             }
         )
+    }
+}
+
+impl std::str::FromStr for PixelFormat {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "R1" => Result::Ok(PixelFormat::R1),
+            "R8" => Result::Ok(PixelFormat::R8),
+            "XRGB1111" => Result::Ok(PixelFormat::XRGB1111),
+            "RGB332" => Result::Ok(PixelFormat::RGB332),
+            "RGB565" => Result::Ok(PixelFormat::RGB565),
+            "RGB888" => Result::Ok(PixelFormat::RGB888),
+            "XRGB8888" => Result::Ok(PixelFormat::XRGB8888),
+            "ARGB8888" => Result::Ok(PixelFormat::ARGB8888),
+            other => Err(format!("unknown PixelFormat variant `{}`", other)),
+        }
     }
 }
 

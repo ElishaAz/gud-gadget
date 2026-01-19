@@ -1,5 +1,5 @@
 [package]
-name = "gud-display-minifb"
+name = "gud-display"
 version = "0.1.0"
 edition = "2021"
 
@@ -10,5 +10,10 @@ tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 usb-gadget = "0.7.6"
 tracing = "0.1.41"
 anyhow = "1.0.100"
-minifb = "0.28.0"
+minifb = {version = "0.28.0", optional = true }
 bytemuck = "1.24.0"
+clap = { version = "4.5.54", features = ["derive"] }
+
+[features]
+default = ["minifb"]
+minifb = ["dep:minifb"]
